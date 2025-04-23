@@ -1,0 +1,154 @@
+"""
+Skeleton implementation of Shor’s algorithm in Qiskit.
+JHU QIP Spring 2025
+Team 1
+"""
+
+from __future__ import annotations
+import argparse
+import math
+import random
+from typing import Tuple, Optional
+
+# Qiskit imports
+from qiskit import (
+    QuantumCircuit,
+    ClassicalRegister,
+    Aer,
+    execute,
+    transpile,
+)
+from qiskit.circuit.library import QFT
+from qiskit.algorithms import Shor as QiskitShor  # reference impl for sanity
+
+# -------------------------------------------------------------------------
+# 1)  Core
+# -------------------------------------------------------------------------
+def shor_factor(N: int, simulator: str = "aer_simulator") -> Optional[Tuple[int, int]]:
+    """
+    Factor N with Shor.  Return (p, q) or None if failure.
+
+    Steps (fill in):
+        a) Pick random a < N and gcd(a, N) == 1
+        b) Use order‑finding subroutine to find r = order_N(a)
+        c) If r is even and a^(r/2) ≠ −1 (mod N), compute p, q
+    """
+    if N % 2 == 0:
+        return (2, N // 2)
+
+    while True:
+        a = random.randrange(2, N - 1)
+        if math.gcd(a, N) != 1:
+            # lucky classical factor
+            return (math.gcd(a, N), N // math.gcd(a, N))
+
+        # subroutine skeleton --------------------------------
+        r = order_finding(a, N, simulator)        # TODO: implement
+        # --------------------------------------------------------------------
+
+        if r is None or r % 2 != 0 or pow(a, r // 2, N) == N - 1:
+            # failed attempt – try new 'a'
+            continue
+
+        p = math.gcd(pow(a, r // 2) - 1, N)
+        q = math.gcd(pow(a, r // 2) + 1, N)
+        if p * q == N and p not in (1, N) and q not in (1, N):
+            return (p, q)
+        # else retry
+
+
+# -------------------------------------------------------------------------
+# 2)  Quantum order‑finding circuit
+# -------------------------------------------------------------------------
+def order_finding(a: int, N: int, simulator: str) -> Optional[int]:
+    """
+    Build |2n⟩ control + n target qubits for ME(a, N) and inverse QFT
+    to extract the period r.  Return r (int) if successful, else None.
+    Replace the NotImplemented with your circuit construction.
+    """
+    n = math.ceil(math.log2(N))          # # of target qubits
+    t = 2 * n                            # # of counting qubits
+    qc = QuantumCircuit(t + n, t)
+
+    # -- placeholder: modular exponentiation oracle --------------------------
+    # Implement ME   |x⟩|1⟩  --> |x⟩|a^x mod N⟩  (needs n ancillary qubits)
+    qc.barrier()
+    # ------------------------------------------------------------------------
+
+    # Apply QFT^{-1}, measure, classical post‑processing ...
+    raise NotImplementedError("Design the order‑finding circuit!")
+
+
+# -------------------------------------------------------------------------
+# 3)  Resource & scaling study helpers
+# -------------------------------------------------------------------------
+def circuit_size_vs_bits(max_bits: int = 8, backend="aer_simulator"):
+    """Generate data: (bits, qubits, gates) for plotting."""
+    records = []
+    for nbits in range(3, max_bits + 1):
+        N = random_prime(nbits)
+        qc = transpile(build_modexp_circuit(nbits), basis_gates=["cx", "u3"])
+        records.append((nbits, qc.num_qubits, qc.size()))
+    return records
+
+
+def simulate_until_break(max_bits: int = 14):
+    """Run the state‑vector simulator until memory/time blows up."""
+    backend = Aer.get_backend("aer_simulator")
+    for nbits in range(3, max_bits + 1):
+        N = random_prime(nbits)
+        try:
+            shor_factor(N, simulator="aer_simulator")   # will call backend
+        except MemoryError:
+            print(f"Simulation broke at {nbits}‑bit N")
+            break
+
+
+# -------------------------------------------------------------------------
+# 4)  Utilities / stubs
+# -------------------------------------------------------------------------
+def random_prime(nbits: int) -> int:
+    """Return a random n‑bit *odd* composite (product of two primes)."""
+    # quick‑n‑dirty; replace with something nicer if you like
+    while True:
+        p = q = 1
+        while p == q:
+            p = qiskit_random_prime(nbits // 2)
+            q = qiskit_random_prime(nbits - nbits // 2)
+        N = p * q
+        if N.bit_length() == nbits:
+            return N
+
+
+def build_modexp_circuit(nbits: int) -> QuantumCircuit:
+    """Return *one* modular exponentiation building‑block to inspect size."""
+    # For scaling study only – not wired to full algorithm.
+    # Could be CuModExp, repeated‑squaring, or Beauregard style...
+    return QuantumCircuit(nbits)  # stub
+
+
+# -------------------------------------------------------------------------
+# 5)  CLI & plotting hooks
+# -------------------------------------------------------------------------
+def main():
+    ap = argparse.ArgumentParser(description="Shor skeleton in Qiskit")
+    ap.add_argument("N", type=int, nargs="?", help="Number to factor (default: scaling study)")
+    args = ap.parse_args()
+
+    if args.N:
+        res = shor_factor(args.N)
+        if res:
+            p, q = res
+            print(f"{args.N} = {p} × {q}")
+        else:
+            print("Failed to find non‑trivial factors (try again).")
+    else:
+        # Quick scaling demo
+        data = circuit_size_vs_bits()
+        print("bits,qubits,gates")
+        for rec in data:
+            print(*rec, sep=",")
+
+
+if __name__ == "__main__":
+    main()
